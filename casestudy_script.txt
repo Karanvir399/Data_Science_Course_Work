@@ -1,0 +1,250 @@
+# Selecting distinct IDs to find number of unique participants with daily activity data
+SELECT DISTINCT Id 
+FROM 
+FFTD.daily_activity
+# 33 unique IDs reported in DailyActivity table
+;
+
+# Selecting unique IDs in SleepLog table
+SELECT DISTINCT Id
+FROM 
+FFTD.sleep_info
+# 24 unique IDs reported in SleepLog table
+;
+
+# Selecting unique IDs in WeightLog table
+SELECT DISTINCT Id
+FROM 
+FFTD.weight_info
+# 8 unique IDs reported in WeightLog table
+;
+
+# Finding start and end date of data tracked in DailyActivity table
+SELECT MIN(ActivityDate) AS start_date,MAX(ActivityDate) AS end_date
+FROM 
+FFTD.daily_activity
+# Start date 2016-4-12, end date 2016-5-12
+;
+
+SELECT 
+CAST(SleepDay AS date), MIN(SleepDay) AS start_date,MAX(SleepDay) AS end_date
+FROM 
+FFTD.sleep_info 
+GROUP BY SleepDay;
+
+#SELECT 
+#PARSE_DATE('%m-%d-%y',SleepDay)
+#FROM 
+#FFTD.sleep_info;
+
+# Finding start and end date of data tracked in SleepLog table
+SELECT 
+MIN(SleepDay) AS start_date,MAX(SleepDay) AS end_date
+FROM 
+FFTD.sleep_info 
+# Start date 2016-4-12, end date 2016-5-12
+;
+
+# Finding start and end date of data tracked in WeightLog table
+SELECT 
+MIN(Date) AS start_date, MAX(Date) AS end_date
+FROM 
+FFTD.weight_info
+# Start date 2016-4-12, end date 2016-5-12
+;
+
+# Finding duplicate rows, if any, in DailyActivity
+SELECT Id,ActivityDate,COUNT(*) AS num_row
+FROM 
+FFTD.daily_activity
+GROUP BY Id,ActivityDate # Each row is uniquely identified by the ID and ActivityDate colummns
+HAVING num_row>1
+# No results, no duplicate rows in the DailyActivity table
+;
+# Finding duplicate rows, if any, in SleepLog
+SELECT *,COUNT(*) AS num_row
+FROM 
+FFTD.sleep_info
+GROUP BY Id,SleepDay,TotalSleepRecords,TotalMinutesAsleep,TotalTimeInBed
+HAVING num_row>1
+# 0 duplicate rows returned in new table; duplicate rows deleted
+;
+
+# Finding duplicate rows, if any, in WeightLog table
+SELECT *,COUNT(*) AS num_row
+FROM 
+FFTD.weight_info
+GROUP BY 1,2,3,4,5,6,7,8
+HAVING num_row>1
+# 0 duplicate rows returned
+;
+
+# Examining records with 0 in TotalSteps column of DailyActivity table
+SELECT Id,COUNT(*) AS num_zero_steps
+FROM FFTD.daily_activity
+WHERE TotalSteps =0
+GROUP BY ID
+ORDER BY num_zero_steps
+
+# 15 participants with zero-step days
+;
+
+# Examining total number of days (records) with zero steps
+SELECT SUM(num_zero_steps) AS total_zero_step_days
+FROM (SELECT COUNT(*) AS num_zero_steps
+FROM FFTD.daily_activity
+WHERE TotalSteps =0) 
+# 77 records with zero steps
+;
+
+# Looking at all attributes of each zero-step day
+SELECT *, ROUND((SedentaryMinutes/60),2) AS sedentary_hours
+FROM FFTD.daily_activity
+WHERE TotalSteps=0
+# While technically possible that these records reflect days that users were wholly inactive (most records returned in the above query claim 24 total 
+#hours of sedentary activity), they're more likely reflective of days the users didn't wear their FitBits, making the records potentially misleading
+;
+
+# Selecting dates and corresponding days of the week to identify weekdays and weekends
+SELECT ActivityDate,format_datetime('%A',ActivityDate) AS day_of_week
+FROM FFTD.daily_activity 
+;
+
+SELECT ActivityDate, 
+	CASE 
+		WHEN day_of_week = 'Monday' THEN 'Weekday'
+		WHEN day_of_week = 'Tuesday' THEN 'Weekday'
+		WHEN day_of_week = 'Wednesday' THEN 'Weekday'
+		WHEN day_of_week = 'Thursday' THEN 'Weekday'
+		WHEN day_of_week = 'Friday' THEN 'Weekday'
+		ELSE 'Weekend' 
+	END AS part_of_week
+FROM
+	(SELECT ActivityDate,format_datetime('%A',ActivityDate) AS day_of_week
+FROM FFTD.daily_activity  ) as temp
+;
+
+# Looking at average steps, distance, and calories on weekdays vs. weekends
+SELECT part_of_week, AVG(TotalSteps) AS avg_steps, AVG(TotalDistance) AS avg_distance, AVG(Calories) AS avg_calories
+FROM 
+	(SELECT *, 
+		CASE 
+			WHEN day_of_week = 'Monday' THEN 'Weekday'
+		WHEN day_of_week = 'Tuesday' THEN 'Weekday'
+		WHEN day_of_week = 'Wednesday' THEN 'Weekday'
+		WHEN day_of_week = 'Thursday' THEN 'Weekday'
+		WHEN day_of_week = 'Friday' THEN 'Weekday'
+		ELSE 'Weekend' 
+	END AS part_of_week
+	FROM
+		(SELECT *, ActivityDate,format_datetime('%A',ActivityDate) AS day_of_week
+		FROM FFTD.daily_activity) as temp
+	) as temp2
+GROUP BY part_of_week;
+
+# Looking at average steps, distance, and calories per day of the week
+SELECT format_datetime('%A',ActivityDate) AS day_of_week,AVG(TotalSteps) AS avg_steps, AVG(TotalDistance) AS avg_distance, AVG(Calories) AS avg_calories
+FROM FFTD.daily_activity 
+GROUP BY day_of_week
+ORDER BY avg_steps DESC;
+
+# Looking at average amount of time spent asleep and average time to fall asleep per day of the week
+SELECT format_datetime('%A',SleepDay) AS day_of_week,AVG(TotalMinutesAsleep) AS avg_minutes_asleep,AVG(TotalMinutesAsleep/60) AS avg_hours_asleep,AVG(TotalTimeInBed-TotalMinutesAsleep) AS avg_time_in_minutes_to_fall_asleep
+FROM FFTD.sleep_info 
+GROUP BY day_of_week
+ORDER BY avg_hours_asleep;
+
+# Left joining all 3 tables
+SELECT *
+FROM 
+FFTD.daily_activity AS d 
+LEFT JOIN FFTD.sleep_info AS s 
+ON d.ActivityDate=s.SleepDay AND d.Id=s.Id
+LEFT JOIN FFTD.weight_info AS w
+ON s.SleepDay=w.Date AND s.Id=w.Id
+ORDER BY d.Id,Date;
+
+# Inner joining all 3 tables
+SELECT *
+FROM 
+FFTD.daily_activity AS d 
+JOIN FFTD.sleep_info AS s 
+ON d.ActivityDate=s.SleepDay AND d.Id=s.Id
+JOIN FFTD.weight_info AS w
+ON s.SleepDay=w.Date AND s.Id=w.Id
+ORDER BY d.Id,Date;
+
+# Looking at instances where users don't have records in SleepLog based on day of the week
+SELECT format_datetime('%A',ActivityDate) AS day_of_week,count(*) AS num
+FROM FFTD.daily_activity AS d
+LEFT JOIN FFTD.sleep_info AS s 
+ON d.ActivityDate=s.SleepDay AND d.Id=s.Id
+WHERE s.TotalMinutesAsleep IS NULL 
+GROUP BY day_of_week
+ORDER BY num DESC;
+
+# Looking at calories and active minutes
+SELECT Id,ActivityDate,Calories,SedentaryMinutes,LightlyActiveMinutes,FairlyActiveMinutes,VeryActiveMinutes
+FROM 
+FFTD.daily_activity;
+
+# Looking at calories and active distances
+SELECT Id,ActivityDate,Calories,SedentaryActiveDistance,LightActiveDistance,ModeratelyActiveDistance,VeryActiveDistance,TotalDistance
+FROM 
+FFTD.daily_activity;
+
+# Looking at calories and total steps
+SELECT Id,ActivityDate,Calories,TotalSteps
+FROM 
+FFTD.daily_activity;
+
+# Looking at calories and total minutes asleep
+SELECT d.Id,d.ActivityDate,calories,TotalMinutesAsleep
+FROM 
+FFTD.daily_activity AS d
+INNER JOIN FFTD.sleep_info AS s
+ON d.Id=s.Id AND d.ActivityDate=s.SleepDay;
+
+# Looking at calories and total minutes & hours asleep from day before
+Select d.Id,ActivityDate,Calories,TotalMinutesAsleep,
+LAG(TotalMinutesAsleep,1) OVER (ORDER BY d.Id,d.ActivityDate) AS minutes_slept_day_before,
+LAG(TotalMinutesAsleep,1) OVER (ORDER BY d.Id,d.ActivityDate)/60 AS hours_slept_day_before
+FROM 
+FFTD.daily_activity AS d
+INNER JOIN FFTD.sleep_info AS s
+ON d.Id=s.Id AND d.ActivityDate=s.SleepDay;
+
+# Looking at manual reports vs. automated reports in WeightLog table
+SELECT IsManualReport,COUNT(DISTINCT Id) 
+FROM FFTD.weight_info 
+GROUP BY IsManualReport;
+
+# Looking at average weight of participants whose reports were generated manually vs. automatically
+SELECT IsManualReport,COUNT(*) AS num_reports,AVG(WeightPounds) AS avg_weight
+FROM FFTD.weight_info 
+GROUP BY IsManualReport;
+
+# Looking at all Minutes (inc. new column of total minutes) in DailyActivity table
+SELECT Id,ActivityDate,(SedentaryMinutes + LightlyActiveMinutes + FairlyActiveMinutes + VeryActiveMinutes) AS total_minutes,SedentaryMinutes,LightlyActiveMinutes,FairlyActiveMinutes,VeryActiveMinutes
+FROM FFTD.daily_activity;
+
+# Looking at non-sedentary minutes and total sleep
+SELECT d.Id,ActivityDate,LightlyActiveMinutes,FairlyActiveMinutes,VeryActiveMinutes,(LightlyActiveMinutes + FairlyActiveMinutes + VeryActiveMinutes) AS total_minutes,TotalMinutesAsleep,(TotalTimeInBed-TotalMinutesAsleep) AS minutes_to_fall_asleep
+FROM FFTD.daily_activity AS d
+JOIN FFTD.sleep_info AS s 
+ON d.Id=s.Id AND d.ActivityDate=s.SleepDay;
+
+# Looking at number of days where total steps is equal to or greater than the CDC-recommended amount of 10,000
+SELECT FORMAT_DATE("%a", ActivityDate) AS day_of_week,COUNT(*)
+FROM FFTD.daily_activity 
+WHERE TotalSteps >=10000
+GROUP BY day_of_week;
+
+# Looking at number of days where users got the CDC-recommended amount of sleep (7-9 hours a night)
+SELECT FORMAT_DATE("%a", ActivityDate) AS day_of_week,COUNT(*) AS num_days
+FROM FFTD.daily_activity AS d 
+JOIN FFTD.sleep_info AS s 
+ON d.Id=s.Id AND d.ActivityDate=s.SleepDay
+WHERE TotalMinutesAsleep>=420 AND TotalMinutesAsleep<=540
+GROUP BY day_of_week
+ORDER BY num_days DESC;
